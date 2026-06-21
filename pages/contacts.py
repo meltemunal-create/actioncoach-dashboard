@@ -21,19 +21,21 @@ def show():
         if col in df.columns:
             df[col] = df[col].replace({"": None, "None": None, "none": None})
 
-    # v1 API millisecond timestamp döndürüyor
     df["createdate"] = pd.to_numeric(df["createdate"], errors="coerce")
     df["createdate"] = pd.to_datetime(df["createdate"], unit="ms", utc=True, errors="coerce")
 
     df["segment"] = df.apply(
-        lambda r: hesapla_segment(r.get("job_title"), r.get("yillik_ciro"), r.get("cal_san_say_s_")), axis=1
+        lambda r: hesapla_segment(r.get("job_title"), r.get("yillik_ciro"), r.get("cal_san_say_s_"))
+        if r.get("hs_marketable_status") == "true" else "Segmentsiz",
+        axis=1
     )
 
     total = len(df)
     now = pd.Timestamp.now(tz="UTC")
-    seg_c = df["segment"].value_counts()
     seg_df_all = df[df["segment"] != "Segmentsiz"]
+    seg_c = seg_df_all["segment"].value_counts()
 
+    # ── Segment summary ──────────────────────────────────────
     st.subheader("Segment Distribution")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Segmented",  f"{len(seg_df_all):,}", f"{len(seg_df_all)/total*100:.1f}% of total")
@@ -41,13 +43,16 @@ def show():
     c3.metric("Power Up",   f"{seg_c.get('Power Up', 0):,}")
     c4.metric("Scale Up",   f"{seg_c.get('Scale Up', 0):,}")
 
-    seg_plot = df["segment"].value_counts().reset_index()
+    # Sadece segmentlenenler, oranlar segment içinde
+    seg_plot = seg_df_all["segment"].value_counts().reset_index()
     seg_plot.columns = ["Segment", "Count"]
-    seg_plot["Pct"] = (seg_plot["Count"] / total * 100).round(1)
+    seg_plot["Pct"] = (seg_plot["Count"] / len(seg_df_all) * 100).round(1)
 
-    fig_seg = px.bar(seg_plot, x="Count", y="Segment", orientation="h",
-                     color="Segment", color_discrete_map=SEGMENT_COLORS,
-                     text=seg_plot["Pct"].astype(str) + "%")
+    fig_seg = px.bar(
+        seg_plot, x="Count", y="Segment", orientation="h",
+        color="Segment", color_discrete_map=SEGMENT_COLORS,
+        text=seg_plot["Pct"].astype(str) + "%",
+    )
     fig_seg.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
                           paper_bgcolor="rgba(0,0,0,0)", xaxis_title="", yaxis_title="",
                           yaxis=dict(autorange="reversed"))
@@ -55,6 +60,7 @@ def show():
 
     st.markdown("---")
 
+    # ── Segment trend ────────────────────────────────────────
     st.subheader("Segment Trend Over Time")
     st.caption("Based on create date — segment distribution of contacts added in each period")
 
@@ -87,6 +93,7 @@ def show():
 
     st.markdown("---")
 
+    # ── Field distributions ──────────────────────────────────
     st.subheader("Field Distributions")
 
     fields = {
@@ -131,7 +138,7 @@ def show():
                 tdf_top["month"] = tdf_top["createdate"].dt.to_period("M").apply(
                     lambda r: r.start_time.strftime("%b %Y"))
                 td = tdf_top.groupby(["month", field]).size().reset_index(name="count")
-                colors = [BRAND["primary"], BRAND["dark"], BRAND["blue"], BRAND["secondary"], "#F0991A"]
+                colors = [BRAND["primary"], BRAND["scale_up"], BRAND["blue"], BRAND["secondary"], "#F0991A"]
                 fig_t = px.bar(td, x="month", y="count", color=field,
                                barmode="stack", color_discrete_sequence=colors,
                                labels={"month": "", "count": "Contacts", field: ""},
