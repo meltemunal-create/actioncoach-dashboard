@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from hubspot_client import get_all_forms, get_form_submissions, BRAND
 
 def filter_by_period(df, period, now):
@@ -18,11 +19,25 @@ def filter_by_period(df, period, now):
         cutoff = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     return df[df["submitted_at"] >= cutoff]
 
+def get_submission_count(form, period, now_tz):
+    try:
+        subs = get_form_submissions(form["id"])
+        if not subs:
+            return form["name"], 0
+        sub_df = pd.DataFrame(subs)
+        if "submittedAt" not in sub_df.columns:
+            return form["name"], 0
+        sub_df["submitted_at"] = pd.to_datetime(sub_df["submittedAt"], unit="ms", utc=True)
+        count = len(filter_by_period(sub_df, period, now_tz))
+        return form["name"], count
+    except Exception:
+        return form["name"], 0
+
 def show():
     st.title("Form Performance")
     st.caption(f"Last updated: {datetime.now().strftime('%d %b %Y, %H:%M')}")
 
-    with st.spinner("Loading form list..."):
+    with st.spinner("Loading forms..."):
         forms = get_all_forms()
 
     if not forms:
@@ -30,21 +45,48 @@ def show():
         return
 
     st.caption(f"{len(forms)} forms found")
-
     period = st.radio("Period", ["Today", "This week", "This month", "This quarter", "This year"], horizontal=True)
     now_tz = pd.Timestamp.now(tz="UTC")
 
+    st.subheader("Top 10 Forms")
+
+    if st.button("🔍 Load Top 10"):
+        progress = st.progress(0, text="Loading submissions...")
+        results = []
+        done = 0
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(get_submission_count, f, period, now_tz): f for f in forms}
+            for future in as_completed(futures):
+                name, count = future.result()
+                results.append({"Form Name": name, "Submissions": count})
+                done += 1
+                progress.progress(done / len(forms), text=f"Loading {done}/{len(forms)}...")
+
+        progress.empty()
+        top10 = pd.DataFrame(results).nlargest(10, "Submissions").reset_index(drop=True)
+        top10.index += 1
+        st.dataframe(top10, use_container_width=True)
+
+        fig = px.bar(top10.reset_index(), x="Submissions", y="Form Name", orientation="h",
+                     color_discrete_sequence=[BRAND["primary"]])
+        fig.update_layout(yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                          paper_bgcolor="rgba(0,0,0,0)", showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Click 'Load Top 10' to see the most submitted forms for the selected period.")
+
+    st.markdown("---")
+
+    st.subheader("Form Detail")
     form_names = [f.get("name", "Unknown") for f in forms]
     form_map = {f.get("name", "Unknown"): f.get("id") for f in forms}
-
     selected_name = st.selectbox("Select a form", ["— select —"] + form_names)
 
     if selected_name == "— select —":
         st.info("Select a form above to load its submissions.")
         return
 
-    st.markdown("---")
-    st.subheader(f"{selected_name}")
     form_id = form_map[selected_name]
 
     with st.spinner("Loading submissions..."):
@@ -60,9 +102,8 @@ def show():
         return
 
     sub_df["submitted_at"] = pd.to_datetime(sub_df["submittedAt"], unit="ms", utc=True)
-    total_all = len(sub_df)
-    filtered  = len(filter_by_period(sub_df, period, now_tz))
-
+    total_all    = len(sub_df)
+    filtered     = len(filter_by_period(sub_df, period, now_tz))
     this_month   = len(filter_by_period(sub_df, "This month",   now_tz))
     this_quarter = len(filter_by_period(sub_df, "This quarter", now_tz))
 
@@ -83,7 +124,6 @@ def show():
     m5.metric("Busiest day",  str(busiest_day), f"{busiest_cnt} subs")
 
     st.markdown("---")
-
     st.markdown("**Historical Submissions — monthly**")
     sub_df2 = sub_df.copy()
     sub_df2["month"] = sub_df2["submitted_at"].dt.to_period("M").apply(
