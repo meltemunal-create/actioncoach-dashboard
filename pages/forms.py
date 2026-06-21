@@ -44,30 +44,32 @@ def show():
         st.error("No forms found.")
         return
 
-    st.caption(f"{len(forms)} forms found")
+    all_forms = forms
+    ebook_forms = [f for f in forms if "lead magnet" in f.get("name", "").lower()]
+    regular_forms = [f for f in forms if "lead magnet" not in f.get("name", "").lower()]
+
+    st.caption(f"{len(forms)} forms found — {len(ebook_forms)} e-book (Lead Magnet), {len(regular_forms)} other")
+
     period = st.radio("Period", ["Today", "This week", "This month", "This quarter", "This year"], horizontal=True)
     now_tz = pd.Timestamp.now(tz="UTC")
 
+    # ── TOP 10 GENEL ─────────────────────────────────────────
     st.subheader("Top 10 Forms")
-
     if st.button("🔍 Load Top 10"):
         progress = st.progress(0, text="Loading submissions...")
         results = []
         done = 0
-
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(get_submission_count, f, period, now_tz): f for f in forms}
+            futures = {executor.submit(get_submission_count, f, period, now_tz): f for f in all_forms}
             for future in as_completed(futures):
                 name, count = future.result()
                 results.append({"Form Name": name, "Submissions": count})
                 done += 1
-                progress.progress(done / len(forms), text=f"Loading {done}/{len(forms)}...")
-
+                progress.progress(done / len(all_forms), text=f"Loading {done}/{len(all_forms)}...")
         progress.empty()
         top10 = pd.DataFrame(results).nlargest(10, "Submissions").reset_index(drop=True)
         top10.index += 1
         st.dataframe(top10, use_container_width=True)
-
         fig = px.bar(top10.reset_index(), x="Submissions", y="Form Name", orientation="h",
                      color_discrete_sequence=[BRAND["primary"]])
         fig.update_layout(yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
@@ -78,9 +80,39 @@ def show():
 
     st.markdown("---")
 
+    # ── TOP 10 E-BOOK ─────────────────────────────────────────
+    st.subheader("Top 10 E-Books (Lead Magnet)")
+    if st.button("🔍 Load Top 10 E-Books"):
+        progress2 = st.progress(0, text="Loading e-book submissions...")
+        results2 = []
+        done2 = 0
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures2 = {executor.submit(get_submission_count, f, period, now_tz): f for f in ebook_forms}
+            for future in as_completed(futures2):
+                name, count = future.result()
+                results2.append({"Form Name": name, "Submissions": count})
+                done2 += 1
+                progress2.progress(done2 / len(ebook_forms), text=f"Loading {done2}/{len(ebook_forms)}...")
+        progress2.empty()
+        top10_ebook = pd.DataFrame(results2).nlargest(10, "Submissions").reset_index(drop=True)
+        top10_ebook.index += 1
+        # Form adından "Lead Magnet - " kısmını temizle
+        top10_ebook["Form Name"] = top10_ebook["Form Name"].str.replace("Lead Magnet - ", "", regex=False)
+        st.dataframe(top10_ebook, use_container_width=True)
+        fig2 = px.bar(top10_ebook.reset_index(), x="Submissions", y="Form Name", orientation="h",
+                      color_discrete_sequence=[BRAND["blue"]])
+        fig2.update_layout(yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                           paper_bgcolor="rgba(0,0,0,0)", showlegend=False)
+        st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("Click 'Load Top 10 E-Books' to see the most downloaded e-books.")
+
+    st.markdown("---")
+
+    # ── FORM DETAY ───────────────────────────────────────────
     st.subheader("Form Detail")
-    form_names = [f.get("name", "Unknown") for f in forms]
-    form_map = {f.get("name", "Unknown"): f.get("id") for f in forms}
+    form_names = [f.get("name", "Unknown") for f in all_forms]
+    form_map = {f.get("name", "Unknown"): f.get("id") for f in all_forms}
     selected_name = st.selectbox("Select a form", ["— select —"] + form_names)
 
     if selected_name == "— select —":
@@ -128,8 +160,12 @@ def show():
     sub_df2 = sub_df.copy()
     sub_df2["month"] = sub_df2["submitted_at"].dt.to_period("M").apply(
         lambda r: r.start_time.strftime("%b %Y"))
-    hist = sub_df2.groupby("month").size().reset_index(name="count")
+    sub_df2["month_sort"] = sub_df2["submitted_at"].dt.to_period("M").apply(
+        lambda r: r.start_time)
+    hist = sub_df2.groupby(["month", "month_sort"]).size().reset_index(name="count")
+    month_order = hist.sort_values("month_sort")["month"].tolist()
     fig_h = px.bar(hist, x="month", y="count",
+                   category_orders={"month": month_order},
                    labels={"month": "", "count": "Submissions"},
                    color_discrete_sequence=[BRAND["primary"]])
     fig_h.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300)
