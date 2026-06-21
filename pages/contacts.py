@@ -35,7 +35,6 @@ def show():
     seg_df_all = df[df["segment"] != "Segmentsiz"]
     seg_c = seg_df_all["segment"].value_counts()
 
-    # ── Segment summary ──────────────────────────────────────
     st.subheader("Segment Distribution")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Segmented",  f"{len(seg_df_all):,}", f"{len(seg_df_all)/total*100:.1f}% of total")
@@ -43,16 +42,13 @@ def show():
     c3.metric("Power Up",   f"{seg_c.get('Power Up', 0):,}")
     c4.metric("Scale Up",   f"{seg_c.get('Scale Up', 0):,}")
 
-    # Sadece segmentlenenler, oranlar segment içinde
     seg_plot = seg_df_all["segment"].value_counts().reset_index()
     seg_plot.columns = ["Segment", "Count"]
     seg_plot["Pct"] = (seg_plot["Count"] / len(seg_df_all) * 100).round(1)
 
-    fig_seg = px.bar(
-        seg_plot, x="Count", y="Segment", orientation="h",
-        color="Segment", color_discrete_map=SEGMENT_COLORS,
-        text=seg_plot["Pct"].astype(str) + "%",
-    )
+    fig_seg = px.bar(seg_plot, x="Count", y="Segment", orientation="h",
+                     color="Segment", color_discrete_map=SEGMENT_COLORS,
+                     text=seg_plot["Pct"].astype(str) + "%")
     fig_seg.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
                           paper_bgcolor="rgba(0,0,0,0)", xaxis_title="", yaxis_title="",
                           yaxis=dict(autorange="reversed"))
@@ -60,7 +56,6 @@ def show():
 
     st.markdown("---")
 
-    # ── Segment trend ────────────────────────────────────────
     st.subheader("Segment Trend Over Time")
     st.caption("Based on create date — segment distribution of contacts added in each period")
 
@@ -74,26 +69,30 @@ def show():
     if period_opt == "Last 1 month — weekly":
         sdf = sdf[sdf["createdate"] >= now - timedelta(days=30)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("W").apply(lambda r: r.start_time.strftime("%d %b"))
+        sdf["period_sort"] = sdf["createdate"].dt.to_period("W").apply(lambda r: r.start_time)
     elif period_opt == "Last 6 months — monthly":
         sdf = sdf[sdf["createdate"] >= now - timedelta(days=180)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("M").apply(lambda r: r.start_time.strftime("%b %Y"))
+        sdf["period_sort"] = sdf["createdate"].dt.to_period("M").apply(lambda r: r.start_time)
     else:
         sdf = sdf[sdf["createdate"] >= now - timedelta(days=365)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("Q").astype(str)
+        sdf["period_sort"] = sdf["createdate"].dt.to_period("Q").apply(lambda r: r.start_time)
 
     if sdf.empty:
         st.info("No segmented contacts in this period.")
     else:
-        trend = sdf.groupby(["period", "segment"]).size().reset_index(name="count")
+        trend = sdf.groupby(["period", "period_sort", "segment"]).size().reset_index(name="count")
+        period_order = trend.drop_duplicates("period").sort_values("period_sort")["period"].tolist()
         fig_tr = px.bar(trend, x="period", y="count", color="segment",
                         color_discrete_map=SEGMENT_COLORS, barmode="stack",
+                        category_orders={"period": period_order},
                         labels={"period": "", "count": "Contacts", "segment": "Segment"})
         fig_tr.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_tr, use_container_width=True)
 
     st.markdown("---")
 
-    # ── Field distributions ──────────────────────────────────
     st.subheader("Field Distributions")
 
     fields = {
@@ -137,10 +136,14 @@ def show():
                 tdf_top = tdf_top.copy()
                 tdf_top["month"] = tdf_top["createdate"].dt.to_period("M").apply(
                     lambda r: r.start_time.strftime("%b %Y"))
-                td = tdf_top.groupby(["month", field]).size().reset_index(name="count")
+                tdf_top["month_sort"] = tdf_top["createdate"].dt.to_period("M").apply(
+                    lambda r: r.start_time)
+                td = tdf_top.groupby(["month", "month_sort", field]).size().reset_index(name="count")
+                month_order = td.drop_duplicates("month").sort_values("month_sort")["month"].tolist()
                 colors = [BRAND["primary"], BRAND["scale_up"], BRAND["blue"], BRAND["secondary"], "#F0991A"]
                 fig_t = px.bar(td, x="month", y="count", color=field,
                                barmode="stack", color_discrete_sequence=colors,
+                               category_orders={"month": month_order},
                                labels={"month": "", "count": "Contacts", field: ""},
                                title="Last 6 months trend")
                 fig_t.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
