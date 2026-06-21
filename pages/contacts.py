@@ -17,20 +17,13 @@ def show():
 
     df = pd.DataFrame(contacts)
 
-    # None ve boş string temizle
     for col in ["job_title", "yillik_ciro", "cal_san_say_s_"]:
         if col in df.columns:
             df[col] = df[col].replace({"": None, "None": None, "none": None})
 
-    df["createdate"] = pd.to_datetime(df["createdate"], errors="coerce")
-
-    # Debug: gerçek değerleri göster
-    with st.expander("🔍 Debug — Gerçek field değerleri (ilk 5 dolu kayıt)"):
-        sample = df[df["yillik_ciro"].notna()][["job_title","yillik_ciro","cal_san_say_s_"]].head(5)
-        st.dataframe(sample)
-        st.write("Unique yillik_ciro values:", df["yillik_ciro"].dropna().unique().tolist()[:20])
-        st.write("Unique cal_san_say_s_ values:", df["cal_san_say_s_"].dropna().unique().tolist()[:20])
-        st.write("Unique job_title values:", df["job_title"].dropna().unique().tolist()[:20])
+    # v1 API millisecond timestamp döndürüyor
+    df["createdate"] = pd.to_numeric(df["createdate"], errors="coerce")
+    df["createdate"] = pd.to_datetime(df["createdate"], unit="ms", utc=True, errors="coerce")
 
     df["segment"] = df.apply(
         lambda r: hesapla_segment(r.get("job_title"), r.get("yillik_ciro"), r.get("cal_san_say_s_")), axis=1
@@ -38,9 +31,6 @@ def show():
 
     total = len(df)
     now = pd.Timestamp.now(tz="UTC")
-    if df["createdate"].dt.tz is None:
-        df["createdate"] = df["createdate"].dt.tz_localize("UTC")
-
     seg_c = df["segment"].value_counts()
     seg_df_all = df[df["segment"] != "Segmentsiz"]
 
