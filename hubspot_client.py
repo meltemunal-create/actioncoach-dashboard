@@ -21,14 +21,14 @@ PROPERTIES = [
 BRAND = {
     "primary": "#FF4801", "secondary": "#FFED31",
     "dark": "#202020", "blue": "#0575E5", "light": "#F5F5F5",
-    "step_up": "#FF4801", "power_up": "#0575E5", "scale_up": "#202020", "none": "#CCCCCC",
+    "step_up": "#FF4801", "power_up": "#0575E5", "scale_up": "#7F77DD", "none": "#CCCCCC",
 }
 
-SEGMENT_COLORS = {"Step Up": "#FF4801", "Power Up": "#0575E5", "Scale Up": "#202020", "Segmentsiz": "#CCCCCC"}
+SEGMENT_COLORS = {"Step Up": "#FF4801", "Power Up": "#0575E5", "Scale Up": "#7F77DD", "Segmentsiz": "#CCCCCC"}
 
 CHANNEL_COLORS = {
     "ORGANIC_SEARCH": "#FF4801", "DIRECT_TRAFFIC": "#FFED31", "SOCIAL_MEDIA": "#0575E5",
-    "EMAIL_MARKETING": "#202020", "PAID_SEARCH": "#F0991A", "PAID_SOCIAL": "#C46B08",
+    "EMAIL_MARKETING": "#7F77DD", "PAID_SEARCH": "#F0991A", "PAID_SOCIAL": "#C46B08",
     "REFERRALS": "#FF8C5A", "OTHER_CAMPAIGNS": "#AAAAAA", "OFFLINE": "#888888", "AI_REFERRALS": "#FFD100",
 }
 
