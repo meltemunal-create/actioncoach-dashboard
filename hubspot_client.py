@@ -11,6 +11,8 @@ HEADERS = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "applicat
 PROPERTIES = [
     "firstname", "lastname", "email", "createdate",
     "hs_marketable_status",
+    "hs_email_optout_176633931",
+    "hs_email_hard_bounce_reason_enum",
     "job_title", "yillik_ciro", "cal_san_say_s_",
     "konum", "faaliyet_gosterdiginiz_sektor",
     "hs_analytics_source"
@@ -49,7 +51,6 @@ CALISAN_PUANI = {
 STEP_UP_TITLES = ["Çalışan", "Şu an çalışmıyorum"]
 
 def hesapla_segment(job_title, yillik_ciro, cal_san):
-    # NaN ve boş kontrolü
     if pd.isna(job_title) or pd.isna(yillik_ciro) or pd.isna(cal_san):
         return "Segmentsiz"
     if str(job_title).strip() == "" or str(yillik_ciro).strip() == "" or str(cal_san).strip() == "":
@@ -80,18 +81,25 @@ def _req(method, url, max_retries=3, **kwargs):
             time.sleep(2 ** attempt)
     return None
 
+def _count(filters):
+    resp = _req("POST", f"{BASE_URL}/crm/v3/objects/contacts/search",
+                headers=HEADERS, json={"limit": 1, "properties": ["hs_object_id"],
+                                       "filterGroups": [{"filters": filters}]})
+    return resp.json().get("total", 0) if resp and resp.status_code == 200 else 0
+
 @st.cache_data(ttl=900)
 def get_contact_counts():
     resp = _req("POST", f"{BASE_URL}/crm/v3/objects/contacts/search",
                 headers=HEADERS, json={"limit": 1, "properties": ["hs_object_id"]})
     total = resp.json().get("total", 0) if resp and resp.status_code == 200 else 0
-    resp2 = _req("POST", f"{BASE_URL}/crm/v3/objects/contacts/search",
-                 headers=HEADERS, json={
-                     "limit": 1, "properties": ["hs_object_id"],
-                     "filterGroups": [{"filters": [{"propertyName": "hs_marketable_status", "operator": "EQ", "value": "true"}]}]
-                 })
-    marketing = resp2.json().get("total", 0) if resp2 and resp2.status_code == 200 else 0
-    return {"total": total, "marketing": marketing, "non_marketing": total - marketing}
+    marketing    = _count([{"propertyName": "hs_marketable_status", "operator": "EQ", "value": "true"}])
+    unsubscribed = _count([{"propertyName": "hs_email_optout_176633931", "operator": "EQ", "value": "true"}])
+    bounced      = _count([{"propertyName": "hs_email_hard_bounce_reason_enum", "operator": "HAS_PROPERTY"}])
+    return {
+        "total": total, "marketing": marketing,
+        "non_marketing": total - marketing,
+        "unsubscribed": unsubscribed, "bounced": bounced,
+    }
 
 @st.cache_data(ttl=900)
 def get_marketing_trend():
@@ -131,8 +139,7 @@ def get_all_contacts():
     has_more = True
     while has_more:
         resp = _req(
-            "GET",
-            f"{BASE_URL}/contacts/v1/lists/all/contacts/all",
+            "GET", f"{BASE_URL}/contacts/v1/lists/all/contacts/all",
             headers=HEADERS,
             params={"count": 100, "vidOffset": vid_offset, "property": PROPERTIES, "showListMemberships": False}
         )
