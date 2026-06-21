@@ -2,6 +2,7 @@ import requests
 import streamlit as st
 from datetime import datetime, timedelta
 import time
+import pandas as pd
 
 HUBSPOT_TOKEN = st.secrets["HUBSPOT_TOKEN"]
 BASE_URL = "https://api.hubapi.com"
@@ -48,8 +49,8 @@ CALISAN_PUANI = {
 STEP_UP_TITLES = ["Çalışan", "Şu an çalışmıyorum"]
 
 def hesapla_segment(job_title, yillik_ciro, cal_san):
-    # 3 field de dolu olmalı
-    if not job_title or not yillik_ciro or not cal_san:
+    # NaN ve boş kontrolü
+    if pd.isna(job_title) or pd.isna(yillik_ciro) or pd.isna(cal_san):
         return "Segmentsiz"
     if str(job_title).strip() == "" or str(yillik_ciro).strip() == "" or str(cal_san).strip() == "":
         return "Segmentsiz"
@@ -79,13 +80,11 @@ def _req(method, url, max_retries=3, **kwargs):
             time.sleep(2 ** attempt)
     return None
 
-# ── HIZLI COUNT ─────────────────────────────────────────────
 @st.cache_data(ttl=900)
 def get_contact_counts():
     resp = _req("POST", f"{BASE_URL}/crm/v3/objects/contacts/search",
                 headers=HEADERS, json={"limit": 1, "properties": ["hs_object_id"]})
     total = resp.json().get("total", 0) if resp and resp.status_code == 200 else 0
-
     resp2 = _req("POST", f"{BASE_URL}/crm/v3/objects/contacts/search",
                  headers=HEADERS, json={
                      "limit": 1, "properties": ["hs_object_id"],
@@ -94,7 +93,6 @@ def get_contact_counts():
     marketing = resp2.json().get("total", 0) if resp2 and resp2.status_code == 200 else 0
     return {"total": total, "marketing": marketing, "non_marketing": total - marketing}
 
-# ── TREND VERİSİ ────────────────────────────────────────────
 @st.cache_data(ttl=900)
 def get_marketing_trend():
     contacts = []
@@ -126,47 +124,35 @@ def get_marketing_trend():
         time.sleep(0.05)
     return contacts
 
-# ── TÜM CONTACTLAR — v1 API (10k limiti yok) ────────────────
 @st.cache_data(ttl=900)
 def get_all_contacts():
     contacts = []
-    props = ",".join(PROPERTIES)
     vid_offset = 0
     has_more = True
-
     while has_more:
         resp = _req(
             "GET",
             f"{BASE_URL}/contacts/v1/lists/all/contacts/all",
             headers=HEADERS,
-            params={
-                "count": 100,
-                "vidOffset": vid_offset,
-                "property": PROPERTIES,
-                "showListMemberships": False,
-            }
+            params={"count": 100, "vidOffset": vid_offset, "property": PROPERTIES, "showListMemberships": False}
         )
         if resp is None or resp.status_code != 200:
             st.warning("HubSpot geçici olarak yanıt vermiyor, lütfen birkaç dakika sonra sayfayı yenileyin.")
             break
-
         data = resp.json()
         results = data.get("contacts", [])
-
         for r in results:
             props_raw = r.get("properties", {})
             contact = {"id": str(r.get("vid", ""))}
             for prop in PROPERTIES:
-                contact[prop] = props_raw.get(prop, {}).get("value", None) if isinstance(props_raw.get(prop), dict) else None
+                val = props_raw.get(prop, {})
+                contact[prop] = val.get("value", None) if isinstance(val, dict) else None
             contacts.append(contact)
-
         has_more = data.get("has-more", False)
         vid_offset = data.get("vid-offset", 0)
         time.sleep(0.05)
-
     return contacts
 
-# ── FORMLAR — tüm sayfaları çeker ───────────────────────────
 @st.cache_data(ttl=900)
 def get_all_forms():
     forms = []
@@ -186,7 +172,6 @@ def get_all_forms():
         time.sleep(0.1)
     return forms
 
-# ── FORM SUBMISSIONS ─────────────────────────────────────────
 @st.cache_data(ttl=900)
 def get_form_submissions(form_id):
     submissions = []
@@ -195,12 +180,8 @@ def get_form_submissions(form_id):
         params = {"limit": 50}
         if after:
             params["after"] = after
-        resp = _req(
-            "GET",
-            f"{BASE_URL}/form-integrations/v1/submissions/forms/{form_id}",
-            headers=HEADERS,
-            params=params
-        )
+        resp = _req("GET", f"{BASE_URL}/form-integrations/v1/submissions/forms/{form_id}",
+                    headers=HEADERS, params=params)
         if resp is None or resp.status_code != 200:
             break
         data = resp.json()
