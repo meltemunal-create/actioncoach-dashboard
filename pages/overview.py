@@ -13,10 +13,10 @@ def show():
 
     total        = counts["total"]
     marketing    = counts["marketing"]
-    non_mkt      = counts["non_marketing"]
     unsubscribed = counts["unsubscribed"]
     bounced      = counts["bounced"]
     aktif        = marketing - unsubscribed - bounced
+    non_mkt      = total - aktif
 
     st.subheader("Contact Summary")
     c1, c2, c3 = st.columns(3)
@@ -28,19 +28,6 @@ def show():
     d1, d2 = st.columns(2)
     d1.metric("Unsubscribed", f"{unsubscribed:,}", f"-{unsubscribed/max(marketing,1)*100:.1f}% of marketing")
     d2.metric("Bounced",      f"{bounced:,}",      f"-{bounced/max(marketing,1)*100:.1f}% of marketing")
-
-    donut = px.pie(
-        values=[aktif, unsubscribed, bounced, non_mkt],
-        names=["Marketing", "Unsubscribed", "Bounced", "Non-Marketing"],
-        hole=0.6,
-        color_discrete_sequence=[BRAND["primary"], BRAND["dark"], "#888888", BRAND["light"]],
-    )
-    donut.update_traces(textinfo="percent+label")
-    donut.update_layout(showlegend=False, margin=dict(t=10,b=10,l=10,r=10),
-                        height=240, paper_bgcolor="rgba(0,0,0,0)")
-    _, dc, _ = st.columns([1,2,1])
-    with dc:
-        st.plotly_chart(donut, use_container_width=True)
 
     st.markdown("---")
 
