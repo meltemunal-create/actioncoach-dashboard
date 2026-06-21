@@ -16,17 +16,34 @@ def show():
         return
 
     df = pd.DataFrame(contacts)
+
+    # None ve boş string temizle
+    for col in ["job_title", "yillik_ciro", "cal_san_say_s_"]:
+        if col in df.columns:
+            df[col] = df[col].replace({"": None, "None": None, "none": None})
+
     df["createdate"] = pd.to_datetime(df["createdate"], errors="coerce")
+
+    # Debug: gerçek değerleri göster
+    with st.expander("🔍 Debug — Gerçek field değerleri (ilk 5 dolu kayıt)"):
+        sample = df[df["yillik_ciro"].notna()][["job_title","yillik_ciro","cal_san_say_s_"]].head(5)
+        st.dataframe(sample)
+        st.write("Unique yillik_ciro values:", df["yillik_ciro"].dropna().unique().tolist()[:20])
+        st.write("Unique cal_san_say_s_ values:", df["cal_san_say_s_"].dropna().unique().tolist()[:20])
+        st.write("Unique job_title values:", df["job_title"].dropna().unique().tolist()[:20])
+
     df["segment"] = df.apply(
         lambda r: hesapla_segment(r.get("job_title"), r.get("yillik_ciro"), r.get("cal_san_say_s_")), axis=1
     )
 
     total = len(df)
-    now   = datetime.now(tz=df["createdate"].dt.tz)
+    now = pd.Timestamp.now(tz="UTC")
+    if df["createdate"].dt.tz is None:
+        df["createdate"] = df["createdate"].dt.tz_localize("UTC")
+
     seg_c = df["segment"].value_counts()
     seg_df_all = df[df["segment"] != "Segmentsiz"]
 
-    # ── Segment summary ──────────────────────────────────────
     st.subheader("Segment Distribution")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Segmented",  f"{len(seg_df_all):,}", f"{len(seg_df_all)/total*100:.1f}% of total")
@@ -38,11 +55,9 @@ def show():
     seg_plot.columns = ["Segment", "Count"]
     seg_plot["Pct"] = (seg_plot["Count"] / total * 100).round(1)
 
-    fig_seg = px.bar(
-        seg_plot, x="Count", y="Segment", orientation="h",
-        color="Segment", color_discrete_map=SEGMENT_COLORS,
-        text=seg_plot["Pct"].astype(str) + "%",
-    )
+    fig_seg = px.bar(seg_plot, x="Count", y="Segment", orientation="h",
+                     color="Segment", color_discrete_map=SEGMENT_COLORS,
+                     text=seg_plot["Pct"].astype(str) + "%")
     fig_seg.update_layout(showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
                           paper_bgcolor="rgba(0,0,0,0)", xaxis_title="", yaxis_title="",
                           yaxis=dict(autorange="reversed"))
@@ -50,7 +65,6 @@ def show():
 
     st.markdown("---")
 
-    # ── Segment trend ────────────────────────────────────────
     st.subheader("Segment Trend Over Time")
     st.caption("Based on create date — segment distribution of contacts added in each period")
 
@@ -62,16 +76,13 @@ def show():
 
     sdf = seg_df_all.copy()
     if period_opt == "Last 1 month — weekly":
-        sdf = sdf[sdf["createdate"] >= now - timedelta(days=30)]
-        sdf = sdf.copy()
+        sdf = sdf[sdf["createdate"] >= now - timedelta(days=30)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("W").apply(lambda r: r.start_time.strftime("%d %b"))
     elif period_opt == "Last 6 months — monthly":
-        sdf = sdf[sdf["createdate"] >= now - timedelta(days=180)]
-        sdf = sdf.copy()
+        sdf = sdf[sdf["createdate"] >= now - timedelta(days=180)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("M").apply(lambda r: r.start_time.strftime("%b %Y"))
     else:
-        sdf = sdf[sdf["createdate"] >= now - timedelta(days=365)]
-        sdf = sdf.copy()
+        sdf = sdf[sdf["createdate"] >= now - timedelta(days=365)].copy()
         sdf["period"] = sdf["createdate"].dt.to_period("Q").astype(str)
 
     if sdf.empty:
@@ -86,19 +97,20 @@ def show():
 
     st.markdown("---")
 
-    # ── Field distributions ──────────────────────────────────
     st.subheader("Field Distributions")
 
     fields = {
-        "yillik_ciro":                     "Annual Revenue",
-        "cal_san_say_s_":                  "Number of Employees",
-        "job_title":                       "Job Title",
-        "faaliyet_gosterdiginiz_sektor":   "Sector",
-        "konum":                           "Location",
+        "yillik_ciro":                   "Annual Revenue",
+        "cal_san_say_s_":                "Number of Employees",
+        "job_title":                     "Job Title",
+        "faaliyet_gosterdiginiz_sektor": "Sector",
+        "konum":                         "Location",
     }
 
     for field, label in fields.items():
-        fdf   = df[df[field].notna() & (df[field] != "")].copy()
+        if field not in df.columns:
+            continue
+        fdf = df[df[field].notna() & (df[field] != "")].copy()
         filled = len(fdf)
         st.markdown(f"**{label}** — {filled:,} / {total:,} records filled ({filled/total*100:.1f}%)")
 
@@ -122,22 +134,20 @@ def show():
         with col_trend:
             cutoff = now - timedelta(days=180)
             tdf = fdf[fdf["createdate"] >= cutoff].copy()
-            tdf["month"] = tdf["createdate"].dt.to_period("M").apply(lambda r: r.start_time.strftime("%b %Y"))
             top_vals = vc["Value"].head(5).tolist()
             tdf_top = tdf[tdf[field].isin(top_vals)]
             if not tdf_top.empty:
+                tdf_top = tdf_top.copy()
+                tdf_top["month"] = tdf_top["createdate"].dt.to_period("M").apply(
+                    lambda r: r.start_time.strftime("%b %Y"))
                 td = tdf_top.groupby(["month", field]).size().reset_index(name="count")
-                colors = [BRAND["primary"], BRAND["dark"], BRAND["blue"],
-                          BRAND["secondary"], "#F0991A"]
+                colors = [BRAND["primary"], BRAND["dark"], BRAND["blue"], BRAND["secondary"], "#F0991A"]
                 fig_t = px.bar(td, x="month", y="count", color=field,
-                               barmode="stack",
-                               color_discrete_sequence=colors,
+                               barmode="stack", color_discrete_sequence=colors,
                                labels={"month": "", "count": "Contacts", field: ""},
                                title="Last 6 months trend")
-                fig_t.update_layout(plot_bgcolor="rgba(0,0,0,0)",
-                                    paper_bgcolor="rgba(0,0,0,0)",
-                                    margin=dict(l=0, r=0, t=30, b=0),
-                                    height=320,
+                fig_t.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                                    margin=dict(l=0, r=0, t=30, b=0), height=320,
                                     legend=dict(font=dict(size=10)))
                 st.plotly_chart(fig_t, use_container_width=True)
             else:
