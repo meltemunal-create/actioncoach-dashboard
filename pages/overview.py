@@ -16,27 +16,29 @@ def show():
     non_mkt      = counts["non_marketing"]
     unsubscribed = counts["unsubscribed"]
     bounced      = counts["bounced"]
+    aktif        = marketing - unsubscribed - bounced
 
     st.subheader("Contact Summary")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total Contacts",         f"{total:,}")
-    c2.metric("Marketing Contacts",     f"{marketing:,}",  f"{marketing/max(total,1)*100:.1f}% of total")
-    c3.metric("Non-Marketing Contacts", f"{non_mkt:,}",    f"{non_mkt/max(total,1)*100:.1f}% of total")
+    c1.metric("Total Contacts",            f"{total:,}")
+    c2.metric("Active Marketing Contacts", f"{aktif:,}",    f"{aktif/max(total,1)*100:.1f}% of total")
+    c3.metric("Non-Marketing Contacts",    f"{non_mkt:,}",  f"{non_mkt/max(total,1)*100:.1f}% of total")
 
     st.markdown("")
-    d1, d2 = st.columns(2)
-    d1.metric("Unsubscribed", f"{unsubscribed:,}", f"{unsubscribed/max(marketing,1)*100:.1f}% of marketing")
-    d2.metric("Bounced",      f"{bounced:,}",      f"{bounced/max(marketing,1)*100:.1f}% of marketing")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Marketing Contacts (gross)", f"{marketing:,}")
+    d2.metric("Unsubscribed", f"{unsubscribed:,}", f"-{unsubscribed/max(marketing,1)*100:.1f}%")
+    d3.metric("Bounced",      f"{bounced:,}",      f"-{bounced/max(marketing,1)*100:.1f}%")
 
     donut = px.pie(
-        values=[marketing, non_mkt],
-        names=["Marketing", "Non-Marketing"],
+        values=[aktif, unsubscribed, bounced, non_mkt],
+        names=["Active Marketing", "Unsubscribed", "Bounced", "Non-Marketing"],
         hole=0.6,
-        color_discrete_sequence=[BRAND["primary"], BRAND["light"]],
+        color_discrete_sequence=[BRAND["primary"], BRAND["dark"], "#888888", BRAND["light"]],
     )
     donut.update_traces(textinfo="percent+label")
     donut.update_layout(showlegend=False, margin=dict(t=10,b=10,l=10,r=10),
-                        height=220, paper_bgcolor="rgba(0,0,0,0)")
+                        height=240, paper_bgcolor="rgba(0,0,0,0)")
     _, dc, _ = st.columns([1,2,1])
     with dc:
         st.plotly_chart(donut, use_container_width=True)
