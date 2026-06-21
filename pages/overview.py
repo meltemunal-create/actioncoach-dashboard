@@ -11,15 +11,22 @@ def show():
     with st.spinner("Loading contact summary..."):
         counts = get_contact_counts()
 
-    total     = counts["total"]
-    marketing = counts["marketing"]
-    non_mkt   = counts["non_marketing"]
+    total        = counts["total"]
+    marketing    = counts["marketing"]
+    non_mkt      = counts["non_marketing"]
+    unsubscribed = counts["unsubscribed"]
+    bounced      = counts["bounced"]
 
     st.subheader("Contact Summary")
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Contacts",         f"{total:,}")
     c2.metric("Marketing Contacts",     f"{marketing:,}",  f"{marketing/max(total,1)*100:.1f}% of total")
     c3.metric("Non-Marketing Contacts", f"{non_mkt:,}",    f"{non_mkt/max(total,1)*100:.1f}% of total")
+
+    st.markdown("")
+    d1, d2 = st.columns(2)
+    d1.metric("Unsubscribed", f"{unsubscribed:,}", f"{unsubscribed/max(marketing,1)*100:.1f}% of marketing")
+    d2.metric("Bounced",      f"{bounced:,}",      f"{bounced/max(marketing,1)*100:.1f}% of marketing")
 
     donut = px.pie(
         values=[marketing, non_mkt],
@@ -53,7 +60,6 @@ def show():
         df["createdate"] = df["createdate"].dt.tz_localize("UTC")
 
     st.subheader("Marketing Contact Growth")
-
     def count_since(days):
         return df[df["createdate"] >= now - timedelta(days=days)].shape[0]
 
