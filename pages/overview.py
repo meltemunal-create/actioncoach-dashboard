@@ -20,19 +20,18 @@ def show():
 
     st.subheader("Contact Summary")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total Contacts",            f"{total:,}")
-    c2.metric("Active Marketing Contacts", f"{aktif:,}",    f"{aktif/max(total,1)*100:.1f}% of total")
-    c3.metric("Non-Marketing Contacts",    f"{non_mkt:,}",  f"{non_mkt/max(total,1)*100:.1f}% of total")
+    c1.metric("Total Contacts",         f"{total:,}")
+    c2.metric("Marketing Contacts",     f"{aktif:,}",   f"{aktif/max(total,1)*100:.1f}% of total")
+    c3.metric("Non-Marketing Contacts", f"{non_mkt:,}", f"{non_mkt/max(total,1)*100:.1f}% of total")
 
     st.markdown("")
-    d1, d2, d3 = st.columns(3)
-    d1.metric("Marketing Contacts (gross)", f"{marketing:,}")
-    d2.metric("Unsubscribed", f"{unsubscribed:,}", f"-{unsubscribed/max(marketing,1)*100:.1f}%")
-    d3.metric("Bounced",      f"{bounced:,}",      f"-{bounced/max(marketing,1)*100:.1f}%")
+    d1, d2 = st.columns(2)
+    d1.metric("Unsubscribed", f"{unsubscribed:,}", f"-{unsubscribed/max(marketing,1)*100:.1f}% of marketing")
+    d2.metric("Bounced",      f"{bounced:,}",      f"-{bounced/max(marketing,1)*100:.1f}% of marketing")
 
     donut = px.pie(
         values=[aktif, unsubscribed, bounced, non_mkt],
-        names=["Active Marketing", "Unsubscribed", "Bounced", "Non-Marketing"],
+        names=["Marketing", "Unsubscribed", "Bounced", "Non-Marketing"],
         hole=0.6,
         color_discrete_sequence=[BRAND["primary"], BRAND["dark"], "#888888", BRAND["light"]],
     )
@@ -55,11 +54,9 @@ def show():
             st.rerun()
         return
 
-    df = pd.DataFrame({"createdate": pd.to_datetime(trend_dates, errors="coerce")})
+    df = pd.DataFrame({"createdate": pd.to_datetime(trend_dates, errors="coerce", utc=True)})
     df = df.dropna()
     now = pd.Timestamp.now(tz="UTC")
-    if df["createdate"].dt.tz is None:
-        df["createdate"] = df["createdate"].dt.tz_localize("UTC")
 
     st.subheader("Marketing Contact Growth")
     def count_since(days):
